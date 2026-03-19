@@ -2,8 +2,8 @@ import requests
 from bs4 import BeautifulSoup
 
 # 🔑 CONFIGURA ESTO
-TELEGRAM_TOKEN = "TU_TOKEN_AQUI"
-CHAT_ID = "TU_CHAT_ID_AQUI"
+TELEGRAM_TOKEN = "8759569270:AAExdcBmlmU-KrOo_80AZN_agXboIxU8k50"
+CHAT_ID = "8751177346"
 
 URLS = [
     "https://www.nike.com/t/air-max-excee-mens-shoes-vl97pm/FZ5486-007",
