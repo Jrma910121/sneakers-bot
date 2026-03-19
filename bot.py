@@ -1,5 +1,7 @@
 import requests
 from bs4 import BeautifulSoup
+import json
+import re
 
 # 🔑 CONFIGURA ESTO
 TELEGRAM_TOKEN = "8759569270:AAExdcBmlmU-KrOo_80AZN_agXboIxU8k50"
@@ -23,34 +25,49 @@ URLS = [
 ]
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0"
+    "User-Agent": "Mozilla/5.0",
+    "Accept-Language": "en-US,en;q=0.9"
 }
+
 
 def obtener_precio(url):
     try:
         response = requests.get(url, headers=HEADERS)
-        soup = BeautifulSoup(response.text, "html.parser")
+        html = response.text
 
-        # buscar precio
+        soup = BeautifulSoup(html, "html.parser")
+
+        # 🟢 1. Método directo
         precio_tag = soup.find("div", {"data-test": "product-price"})
         nombre_tag = soup.find("h1")
 
         nombre = nombre_tag.text.strip() if nombre_tag else "Producto"
 
         if precio_tag:
-            precio_texto = precio_tag.text.strip().replace("$", "")
-            precio = float(precio_texto)
+            precio_texto = precio_tag.text.strip()
+            precio = float(re.sub(r"[^\d.]", "", precio_texto))
             return nombre, precio
-        else:
-            return nombre, None
+
+        # 🟡 2. Buscar en scripts JSON (Nike usa esto)
+        scripts = soup.find_all("script")
+
+        for script in scripts:
+            if script.string and "price" in script.string:
+                matches = re.findall(r'"currentPrice":\s*([0-9.]+)', script.string)
+                if matches:
+                    return nombre, float(matches[0])
+
+        # 🔴 3. No encontrado
+        return nombre, None
 
     except Exception as e:
+        print("ERROR:", e)
         return "Error", None
 
 
 def enviar_telegram(mensaje):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    
+
     data = {
         "chat_id": CHAT_ID,
         "text": mensaje
