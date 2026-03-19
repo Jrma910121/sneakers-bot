@@ -1,0 +1,82 @@
+import requests
+from bs4 import BeautifulSoup
+
+# 🔑 CONFIGURA ESTO
+TELEGRAM_TOKEN = "TU_TOKEN_AQUI"
+CHAT_ID = "TU_CHAT_ID_AQUI"
+
+URLS = [
+    "https://www.nike.com/t/air-max-excee-mens-shoes-vl97pm/FZ5486-007",
+    "https://www.nike.com/t/air-max-moto-2k-mens-shoes-sHpe9Gv4/IQ4924-003",
+    "https://www.nike.com/t/air-max-90-mens-shoes-bAZ6AeHT/DM0029-019",
+    "https://www.nike.com/t/air-max-dn8-mens-shoes-YPsmAOxu/IM7405-700",
+    "https://www.nike.com/t/air-max-95-big-bubble-mens-shoes-with-reflective-accents-2xNsHz6W/IB1667-003",
+    "https://www.nike.com/t/air-max-plus-mens-shoes-x9G2xF/DM0032-105",
+    "https://www.nike.com/launch/t/air-max-90-anthracite-and-neon-yellow",
+    "https://www.nike.com/t/air-max-plus-vii-mens-shoes-Qir8hMAo/HQ2197-800",
+    "https://www.nike.com/t/air-max-95-big-bubble-womens-shoes-C8qkmu3G/HJ5996-003",
+    "https://www.nike.com/t/air-max-plus-g-golf-shoes-etVKhXd4/FZ4150-001",
+    "https://www.nike.com/t/air-max-dn8-leather-mens-shoes-GbnAW5Hb/IB6381-002",
+    "https://www.nike.com/t/sb-air-max-95-skate-shoes-p6pzgr/HF7545-002",
+    "https://www.nike.com/t/air-vapormax-plus-mens-shoes-nC0dzF/CK0900-001",
+    "https://www.nike.com/t/air-max-95-g-golf-shoes-pqM06obj/HV4696-002"
+]
+
+HEADERS = {
+    "User-Agent": "Mozilla/5.0"
+}
+
+def obtener_precio(url):
+    try:
+        response = requests.get(url, headers=HEADERS)
+        soup = BeautifulSoup(response.text, "html.parser")
+
+        # buscar precio
+        precio_tag = soup.find("div", {"data-test": "product-price"})
+        nombre_tag = soup.find("h1")
+
+        nombre = nombre_tag.text.strip() if nombre_tag else "Producto"
+
+        if precio_tag:
+            precio_texto = precio_tag.text.strip().replace("$", "")
+            precio = float(precio_texto)
+            return nombre, precio
+        else:
+            return nombre, None
+
+    except Exception as e:
+        return "Error", None
+
+
+def enviar_telegram(mensaje):
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    
+    data = {
+        "chat_id": CHAT_ID,
+        "text": mensaje
+    }
+
+    requests.post(url, data=data)
+
+
+def main():
+    print("🔄 Revisando precios...\n")
+
+    encontrados = []
+
+    for url in URLS:
+        nombre, precio = obtener_precio(url)
+        print(f"DEBUG → {nombre} | Precio: {precio}")
+
+        if precio and precio < 100:
+            encontrados.append(f"{nombre} - ${precio}\n{url}")
+
+    if encontrados:
+        mensaje = "🔥 OFERTAS ENCONTRADAS 🔥\n\n" + "\n\n".join(encontrados)
+        enviar_telegram(mensaje)
+    else:
+        print("❌ No hay ofertas menores a $100")
+
+
+if __name__ == "__main__":
+    main()
