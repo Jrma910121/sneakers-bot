@@ -14,7 +14,6 @@ URLS = [
     "https://www.nike.com/t/air-max-dn8-mens-shoes-YPsmAOxu/IM7405-700",
     "https://www.nike.com/t/air-max-95-big-bubble-mens-shoes-with-reflective-accents-2xNsHz6W/IB1667-003",
     "https://www.nike.com/t/air-max-plus-mens-shoes-x9G2xF/DM0032-105",
-    "https://www.nike.com/launch/t/air-max-90-anthracite-and-neon-yellow",
     "https://www.nike.com/t/air-max-plus-vii-mens-shoes-Qir8hMAo/HQ2197-800",
     "https://www.nike.com/t/air-max-95-big-bubble-womens-shoes-C8qkmu3G/HJ5996-003",
     "https://www.nike.com/t/air-max-plus-g-golf-shoes-etVKhXd4/FZ4150-001",
