@@ -48,18 +48,16 @@ def obtener_datos_nike(driver, url):
         driver.execute_script("window.scrollTo(0, 0);")
         time.sleep(8)
         
-        # 1. Nombre
+        # 1. Nombre del Producto
         try:
             nombre = driver.find_element(By.ID, "pdp_product_title").text
         except:
-            nombre = "Nike Product"
+            nombre = "Zapatilla Nike"
 
-        # 2. Detección de Descuento en Carrito (Lógica Nueva)
-        # Buscamos textos como "Extra 20% off in cart" o "Discount applied in bag"
+        # 2. Detección de Descuento en Carrito
         promo_extra = False
         try:
             texto_pagina = driver.find_element(By.TAG_NAME, "body").text.lower()
-            # Palabras clave que usa Nike USA para estas promos
             if ("extra" in texto_pagina and "cart" in texto_pagina) or \
                ("discount" in texto_pagina and "at checkout" in texto_pagina) or \
                ("extra" in texto_pagina and "bag" in texto_pagina):
@@ -76,7 +74,7 @@ def obtener_datos_nike(driver, url):
                 if t not in precios_encontrados:
                     precios_encontrados.append(t)
 
-        precio_final = "Check Site"
+        precio_final = "Ver en web"
         precio_original = ""
         
         if len(precios_encontrados) >= 2:
@@ -108,20 +106,20 @@ def obtener_datos_nike(driver, url):
             except:
                 continue
 
-        # 5. Formato Mensaje
+        # 5. Formato del Mensaje en ESPAÑOL
         if precio_original and precio_original != precio_final:
             display_price = f"<s>{precio_original}</s> 🔥 <b>{precio_final}</b>"
         else:
             display_price = f"<b>{precio_final}</b>"
 
-        # Añadir aviso de promo si se detectó
-        aviso_promo = "\n\n🎁 <b>EXTRA DISCOUNT:</b> This item has an additional discount in cart!" if promo_extra else ""
+        # Aviso de promoción adicional
+        aviso_promo = "\n\n🎁 <b>¡DESCUENTO EXTRA!</b> Este artículo tiene una rebaja adicional al añadirlo al carrito." if promo_extra else ""
 
         mensaje = (
-            f"🇺🇸 <b>NIKE USA ALERT</b>\n\n"
-            f"👟 <b>Product:</b> {nombre}\n"
-            f"💰 <b>Price:</b> {display_price}{aviso_promo}\n\n"
-            f'🔗 <a href="{url}">Link to Shop</a>'
+            f"🇺🇸 <b>ALERTA NIKE USA</b>\n\n"
+            f"👟 <b>Producto:</b> {nombre}\n"
+            f"💰 <b>Precio:</b> {display_price}{aviso_promo}\n\n"
+            f'🔗 <a href="{url}">Ver en la Tienda</a>'
         )
         return mensaje, foto_url
 
