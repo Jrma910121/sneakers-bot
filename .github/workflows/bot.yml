@@ -29,8 +29,6 @@ jobs:
         export PATH=$PATH:/usr/lib/chromium-browser/
     
     - name: Ejecutar Bot
-      env:
-        TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-        CHAT_ID: ${{ secrets.CHAT_ID }}
+    
       run: |
         python bot.py
