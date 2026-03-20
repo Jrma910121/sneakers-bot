@@ -4,20 +4,22 @@ import random
 import requests
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
+# Importamos By para los selectores
 from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.options import Options
 from webdriver_manager.chrome import ChromeDriverManager
 
 def enviar_notificacion(mensaje, foto_url=None):
     token = os.getenv("TELEGRAM_TOKEN")
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
     
-    # Intentar enviar con foto, si falla o no hay, enviar solo texto
+    # Intentar enviar con foto
     if foto_url and foto_url.startswith("http"):
         url_api = f"https://api.telegram.org/bot{token}/sendPhoto"
         payload = {"chat_id": chat_id, "photo": foto_url, "caption": mensaje, "parse_mode": "HTML"}
         r = requests.post(url_api, json=payload)
-        if r.status_code != 200: # Si Telegram rechaza la foto, enviamos texto
+        # Si Telegram da error (ej: 400), enviamos solo texto
+        if r.status_code != 200:
             url_api = f"https://api.telegram.org/bot{token}/sendMessage"
             payload = {"chat_id": chat_id, "text": mensaje, "parse_mode": "HTML", "disable_web_page_preview": True}
             requests.post(url_api, json=payload)
@@ -31,9 +33,11 @@ def iniciar_driver():
     chrome_options.add_argument("--headless=new")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--window-size=1920,1080") # Tamaño de pantalla real
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+    
     service = Service(ChromeDriverManager().install())
     driver = webdriver.Chrome(service=service, options=chrome_options)
     driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {"source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"})
@@ -42,7 +46,13 @@ def iniciar_driver():
 def obtener_datos_nike(driver, url):
     try:
         driver.get(url)
-        time.sleep(random.uniform(12, 18)) # Más tiempo para asegurar carga
+        time.sleep(5)
+        
+        # --- TRUCO DEL SCROLL PARA CARGAR LA FOTO ---
+        driver.execute_script("window.scrollTo(0, 500);")
+        time.sleep(2)
+        driver.execute_script("window.scrollTo(0, 0);")
+        time.sleep(5) # Espera final para renderizado
         
         # 1. Nombre
         try:
@@ -50,7 +60,7 @@ def obtener_datos_nike(driver, url):
         except:
             nombre = "Nike Product"
 
-        # 2. Precios (Búsqueda por texto para evitar fallos de selectores)
+        # 2. Precios
         precios_encontrados = []
         elementos = driver.find_elements(By.XPATH, "//*[contains(text(), '$')]")
         for el in elementos:
@@ -59,26 +69,44 @@ def obtener_datos_nike(driver, url):
                 if t not in precios_encontrados:
                     precios_encontrados.append(t)
 
-        # Lógica: Si hay 2 precios, el más alto suele ser el original
         precio_final = "Check Site"
         precio_original = ""
         
         if len(precios_encontrados) >= 2:
-            # Ordenamos para identificar el mayor (original) y menor (oferta)
-            # Limpiamos caracteres no numéricos para comparar
-            nums = sorted([float(''.join(c for c in p if c.isdigit() or c == '.')) for p in precios_encontrados], reverse=True)
-            precio_original = f"${nums[0]:.2f}"
-            precio_final = f"${nums[-1]:.2f}"
+            try:
+                nums_raw = []
+                for p in precios_encontrados:
+                    val = ''.join(c for c in p if c.isdigit() or c == '.')
+                    if val: nums_raw.append(float(val))
+                
+                nums = sorted(list(set(nums_raw)), reverse=True)
+                if len(nums) >= 2:
+                    precio_original = f"${nums[0]:.2f}"
+                    precio_final = f"${nums[-1]:.2f}"
+                else:
+                    precio_final = f"${nums[0]:.2f}"
+            except:
+                precio_final = precios_encontrados[0]
         elif len(precios_encontrados) == 1:
             precio_final = precios_encontrados[0]
 
-        # 3. Imagen (Selector genérico de Nike)
+        # 3. Imagen (Selectores Prioritarios)
         foto_url = None
-        for selector in ['img[data-testid="hero-img"]', '.css-viha7l', 'img[alt*="shoe"]', 'img[alt*="shoe"]']:
+        # Intentamos buscar la imagen principal por atributo data-testid o por src de alta resolución
+        selectors_img = [
+            'img[data-testid="hero-img"]',
+            '.css-viha7l',
+            'img[alt*="' + nombre[:5] + '"]',
+            '.pdp-6-up-image'
+        ]
+        
+        for sel in selectors_img:
             try:
-                img_el = driver.find_element(By.CSS_SELECTOR, selector)
-                foto_url = img_el.get_attribute("src")
-                if foto_url: break
+                img_el = driver.find_element(By.CSS_SELECTOR, sel)
+                temp_url = img_el.get_attribute("src")
+                if temp_url and "data:image" not in temp_url: # Evitar placeholders base64
+                    foto_url = temp_url
+                    break
             except:
                 continue
 
@@ -100,9 +128,11 @@ def obtener_datos_nike(driver, url):
         return f"❌ Error: {str(e)[:50]}", None
 
 def main():
-    urls = ["https://www.nike.com/t/air-force-1-07-mens-shoes-jBrhbr/CT2302-100",
-           "https://www.nike.com/t/air-max-excee-mens-shoes-vl97pm/FZ5486-007"
+    urls = [
+        "https://www.nike.com/t/air-force-1-07-mens-shoes-jBrhbr/CT2302-100",
+        "https://www.nike.com/t/air-max-excee-mens-shoes-vl97pm/FZ5486-007"
     ]
+
     driver = iniciar_driver()
     for link in urls:
         mensaje, foto = obtener_datos_nike(driver, link)
