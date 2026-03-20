@@ -31,91 +31,89 @@ def iniciar_driver():
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--window-size=1920,1080")
+    # Evitar detección
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
     
     service = Service(ChromeDriverManager().install())
     driver = webdriver.Chrome(service=service, options=chrome_options)
+    # Camuflaje extra
     driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {"source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"})
     return driver
 
 def obtener_datos_nike(driver, url):
     try:
         driver.get(url)
-        time.sleep(10)
+        time.sleep(12) # Tiempo vital para que cargue el JavaScript de Nike
         
-        # Scroll para asegurar carga de datos reales
-        driver.execute_script("window.scrollTo(0, 500);")
-        time.sleep(2)
-        driver.execute_script("window.scrollTo(0, 0);")
+        # Simulación de scroll para cargar imágenes perezosas (lazy loading)
+        driver.execute_script("window.scrollTo(0, 600);")
         time.sleep(3)
+        driver.execute_script("window.scrollTo(0, 0);")
         
         # 1. Nombre
         try:
-            nombre = driver.find_element(By.ID, "pdp_product_title").text
+            nombre = driver.find_element(By.CSS_SELECTOR, "h1#pdp_product_title, .pdp-6-up-title").text
         except:
             nombre = "Zapatilla Nike"
 
-        # 2. PRECIOS REALES (Solo del contenedor principal)
-        precio_final = "Ver en web"
+        # 2. PRECIO (Búsqueda por patrón de texto)
+        precio_final = "Consultar"
         precio_original = ""
         try:
-            # Buscamos el bloque de precio oficial del producto
-            contenedor_precio = driver.find_element(By.CSS_SELECTOR, '[data-test="product-price-container"], .product-price')
-            elementos_p = contenedor_precio.find_elements(By.XPATH, ".//*[contains(text(), '$')]")
-            
-            precios_lista = []
-            for p in elementos_p:
-                texto = p.text.replace('\n', '').strip()
-                val = ''.join(c for c in texto if c.isdigit() or c == '.')
-                if val: 
-                    precios_lista.append(float(val))
-            
-            precios_lista = sorted(list(set(precios_lista)), reverse=True)
-            
-            if len(precios_lista) >= 2:
-                precio_original = f"${precios_lista[0]:.2f}"
-                precio_final = f"${precios_lista[-1]:.2f}"
-            elif len(precios_lista) == 1:
-                precio_final = f"${precios_lista[0]:.2f}"
-        except:
-            precio_final = "Consultar"
+            # Buscamos elementos que tengan el símbolo '$' y que estén cerca del título
+            elementos_precio = driver.find_elements(By.XPATH, "//div[contains(@data-test, 'product-price')]//text()[contains(., '$')]/..")
+            if not elementos_precio:
+                elementos_precio = driver.find_elements(By.XPATH, "//*[contains(@class, 'price') and contains(text(), '$')]")
 
-        # 3. DETECCIÓN DE DESCUENTO EXTRA (Sintaxis Corregida)
+            nums = []
+            for ep in elementos_precio:
+                txt = ep.text.replace(',', '').strip()
+                val = ''.join(c for c in txt if c.isdigit() or c == '.')
+                if val and '.' in val: nums.append(float(val))
+            
+            nums = sorted(list(set(nums)), reverse=True)
+            if len(nums) >= 2:
+                precio_original = f"${nums[0]:.2f}"
+                precio_final = f"${nums[-1]:.2f}"
+            elif len(nums) == 1:
+                precio_final = f"${nums[0]:.2f}"
+        except:
+            pass
+
+        # 3. IMAGEN (Búsqueda por atributo de resolución)
+        foto_url = None
+        try:
+            # Buscamos todas las imágenes y nos quedamos con la que parezca ser la principal (Hero)
+            imgs = driver.find_elements(By.TAG_NAME, "img")
+            for img in imgs:
+                src = img.get_attribute("src") or img.get_attribute("data-src")
+                if src and "static.nike.com/a/images" in src and "t_PDP" in src:
+                    # Forzamos HD modificando los parámetros de la URL
+                    base = src.split("?")[0]
+                    foto_url = f"{base}?wid=1200&fmt=jpeg&qlt=90"
+                    break
+        except:
+            pass
+
+        # 4. DESCUENTO OCULTO
         promo_extra = False
         try:
-            full_html = driver.page_source.lower()
-            keywords = ["extra 20%", "extra 25%", "extra 10%", "off in cart", "off at checkout"]
-            
-            # Buscamos banners específicos de promoción
-            banners = driver.find_elements(By.CSS_SELECTOR, ".messaging-banner, [data-test='pdp-messaging-banner']")
-            texto_banners = " ".join([b.text.lower() for b in banners])
-            
-            if any(k in full_html for k in keywords) or any(k in texto_banners for k in keywords):
+            cuerpo = driver.find_element(By.TAG_NAME, "body").text.lower()
+            if "extra" in cuerpo and any(x in cuerpo for x in ["cart", "checkout", "bag", "code"]):
                 promo_extra = True
         except:
             pass
 
-        # 4. IMAGEN HD (Limpieza de URL para 1600px)
-        foto_url = None
-        try:
-            img_el = driver.find_element(By.CSS_SELECTOR, 'img[data-testid="hero-img"], .pdp-6-up-image img')
-            raw_url = img_el.get_attribute("src") or img_el.get_attribute("data-src")
-            if raw_url:
-                base = raw_url.split("?")[0]
-                foto_url = f"{base}?wid=1600&fmt=jpeg&qlt=90"
-        except:
-            pass
-
-        # 5. Formato Mensaje (Español)
-        precios_display = f"<s>{precio_original}</s> 🔥 <b>{precio_final}</b>" if precio_original else f"<b>{precio_final}</b>"
-        aviso_promo = "\n\n🎁 <b>¡DESCUENTO EXTRA EN CARRITO!</b>\nEste modelo tiene una rebaja adicional al añadirlo al carrito." if promo_extra else ""
+        # 5. Formato Mensaje
+        p_display = f"<s>{precio_original}</s> 🔥 <b>{precio_final}</b>" if precio_original else f"<b>{precio_final}</b>"
+        aviso = "\n\n🎁 <b>¡DESCUENTO EXTRA EN CARRITO!</b>\nRevisa en la web para ver el precio final." if promo_extra else ""
 
         mensaje = (
             f"🇺🇸 <b>ALERTA NIKE USA</b>\n\n"
             f"👟 <b>Producto:</b> {nombre}\n"
-            f"💰 <b>Precio:</b> {precios_display}{aviso_promo}\n\n"
+            f"💰 <b>Precio:</b> {p_display}{aviso}\n\n"
             f'🔗 <a href="{url}">Ver en la Tienda</a>'
         )
         return mensaje, foto_url
@@ -132,8 +130,9 @@ def main():
     for link in urls:
         mensaje, foto = obtener_datos_nike(driver, link)
         enviar_notificacion(mensaje, foto)
-        time.sleep(5)
+        time.sleep(random.uniform(5, 10))
     driver.quit()
 
 if __name__ == "__main__":
     main()
+    
