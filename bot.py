@@ -100,7 +100,7 @@ def obtener_datos_nike(driver, url):
         return f"❌ Error: {str(e)[:50]}", None
 
 def main():
-    urls = ["https://www.nike.com/t/air-force-1-07-mens-shoes-jBrhbr/CT2302-100".
+    urls = ["https://www.nike.com/t/air-force-1-07-mens-shoes-jBrhbr/CT2302-100",
            "https://www.nike.com/t/air-max-excee-mens-shoes-vl97pm/FZ5486-007"
     ]
     driver = iniciar_driver()
