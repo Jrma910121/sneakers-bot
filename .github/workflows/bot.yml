@@ -2,33 +2,41 @@ name: Sneakers Bot
 
 on:
   schedule:
-    - cron: '0 9 * * *'  # Todos los días a las 9 AM UTC-5 (ajusta según tu zona horaria)
-  workflow_dispatch:  # Permite ejecutar manualmente
+    - cron: '0 9 * * *'  # 9 AM UTC todos los días
+  workflow_dispatch:    # Para disparo manual
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
-    - name: Configurar Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: 3.11
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
 
-    - name: Instalar dependencias
-      run: |
-        python -m pip install --upgrade pip
-        pip install selenium requests
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install selenium requests beautifulsoup4
 
-    - name: Descargar Chrome y ChromeDriver
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y chromium-browser chromium-chromedriver
-        export PATH=$PATH:/usr/lib/chromium-browser/
-    
-    - name: Ejecutar Bot
-    
-      run: |
-        python bot.py
+      - name: Install Chrome
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget unzip xvfb libxi6 libgconf-2-4
+          wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+          sudo apt install -y ./google-chrome-stable_current_amd64.deb
+          rm google-chrome-stable_current_amd64.deb
+
+      - name: Install Chromedriver
+        run: |
+          CHROME_VERSION=$(google-chrome --version | awk '{print $3}' | cut -d '.' -f 1)
+          wget -N "https://chromedriver.storage.googleapis.com/$CHROME_VERSION.0.0/chromedriver_linux64.zip"
+          unzip chromedriver_linux64.zip
+          sudo mv chromedriver /usr/local/bin/
+          sudo chmod +x /usr/local/bin/
+
+      - name: Run bot
+        run: python bot.py
