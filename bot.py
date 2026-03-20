@@ -29,34 +29,59 @@ def iniciar_driver():
     return webdriver.Chrome(service=service, options=chrome_options)
 
 def obtener_precio_nike(driver, url):
-    """Lógica para extraer el precio de una sola URL."""
     try:
         driver.get(url)
-        wait = WebDriverWait(driver, 15)
+        # Esperamos un poco más para que cargue el JS dinámico
+        time.sleep(7) 
         
-        # Esperar a que el título cargue
-        nombre = wait.until(EC.presence_of_element_located((By.ID, "pdp_product_title"))).text
-        
-        # Pausa para asegurar que los scripts de precio carguen
-        time.sleep(3) 
-        
+        # Intentar obtener el nombre
+        try:
+            nombre = driver.find_element(By.ID, "pdp_product_title").text
+        except:
+            nombre = "Producto Nike"
+
+        # --- ESTRATEGIA DE BÚSQUEDA MÚLTIPLE ---
         precio = None
-        for selector in ['[data-test="product-price"]', '[data-test="product-price-reduced"]', '.product-price']:
+        
+        # 1. Intentar por Atributos de Test (Lo más estable)
+        for data_test in ["product-price", "product-price-reduced", "v1-item-price"]:
             try:
-                elemento = driver.find_element(By.CSS_SELECTOR, selector)
-                if elemento.text:
-                    precio = elemento.text
+                el = driver.find_element(By.CSS_SELECTOR, f'[data-test="{data_test}"]')
+                if el.text:
+                    precio = el.text
                     break
             except:
                 continue
-        
+
+        # 2. Si falla, intentar por clases comunes (CSS)
+        if not precio:
+            for clase in [".product-price", ".is--current-price", ".headline-5"]:
+                try:
+                    el = driver.find_element(By.CSS_SELECTOR, clase)
+                    if "€" in el.text or "$" in el.text or "S/" in el.text: # Verifica si tiene símbolo de moneda
+                        precio = el.text
+                        break
+                except:
+                    continue
+
+        # 3. Si sigue fallando, buscar cualquier texto que parezca un precio en el contenedor principal
+        if not precio:
+            try:
+                # Busca dentro del contenedor de detalles del producto
+                contenedor = driver.find_element(By.CLASS_NAME, "product-profile-info")
+                if "€" in contenedor.text: # Ajusta el símbolo según tu país
+                    # Esto es un último recurso, puede traer texto extra
+                    precio = "Revisar link (bloqueo parcial)"
+            except:
+                pass
+
         if precio:
             return f"👟 *{nombre}*\n💰 Precio: {precio}\n🔗 [Link]({url})"
         else:
-            return f"⚠️ *{nombre}*: No se pudo leer el precio."
+            return f"⚠️ *{nombre}*: No se pudo leer el precio (Posible bloqueo anti-bot)."
             
     except Exception as e:
-        return f"❌ Error en link: {url[:30]}... \nDetalle: {str(e)[:50]}"
+        return f"❌ Error en la página: {nombre if 'nombre' in locals() else 'Desconocido'}"
 
 def main():
     # --- LISTA DE PRODUCTOS ---
