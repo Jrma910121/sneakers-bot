@@ -30,10 +30,10 @@ def iniciar_driver():
     chrome_options.add_argument("--headless=new")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--window-size=1920,1080")
+    chrome_options.add_argument("--window-size=2560,1440") 
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-    # User-Agent más reciente para evitar bloqueos
+    # User-agent muy específico para evitar ser detectado como bot
     chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
     
     service = Service(ChromeDriverManager().install())
@@ -44,12 +44,13 @@ def iniciar_driver():
 def obtener_datos_nike(driver, url):
     try:
         driver.get(url)
-        time.sleep(10) # Espera extendida para carga completa
+        time.sleep(12) # Tiempo extra para que los scripts de Nike carguen la promo
         
-        # Simular visión humana
-        driver.execute_script("window.scrollTo(0, 500);")
+        # Simulación de interacción humana para disparar banners de promo
+        driver.execute_script("window.scrollTo({top: 800, behavior: 'smooth'});")
+        time.sleep(3)
+        driver.execute_script("window.scrollTo({top: 0, behavior: 'smooth'});")
         time.sleep(2)
-        driver.execute_script("window.scrollTo(0, 0);")
         
         # 1. Nombre
         try:
@@ -57,12 +58,29 @@ def obtener_datos_nike(driver, url):
         except:
             nombre = "Zapatilla Nike"
 
-        # 2. DETECCIÓN DE DESCUENTO (Escaneo de texto profundo)
+        # 2. DETECCIÓN AGRESIVA DE DESCUENTOS OCULTOS
         promo_extra = False
         try:
-            full_text = driver.execute_script("return document.body.innerText").lower()
-            if "extra" in full_text and any(word in full_text for word in ["cart", "checkout", "bag", "off"]):
+            # Buscamos en el HTML crudo (incluyendo lo que no se ve)
+            html_source = driver.page_source.lower()
+            
+            # Lista de frases que usa Nike para promos en el carrito
+            keywords_ocultas = [
+                "extra 20%", "extra 25%", "extra 10%", 
+                "off in cart", "off at checkout", 
+                "discount applied in bag", "promo code",
+                "member_promo", "extra_off"
+            ]
+            
+            if any(key in html_source for key in keywords_ocultas):
                 promo_extra = True
+            
+            # Si no lo encuentra, busca específicamente en los banners de 'Messaging'
+            banners = driver.find_elements(By.CSS_SELECTOR, ".messaging-banner, .pdp-messaging, [data-test='pdp-messaging-banner']")
+            for b in banners:
+                if "extra" in b.text.lower() or "off" in b.text.lower():
+                    promo_extra = True
+                    break
         except:
             pass
 
@@ -93,30 +111,22 @@ def obtener_datos_nike(driver, url):
         elif len(precios_encontrados) == 1:
             precio_final = precios_encontrados[0]
 
-        # 4. IMAGEN - MÉTODO DE EXTRACCIÓN FORZADA
+        # 4. IMAGEN HD REAL (FORZADO)
         foto_url = None
         try:
-            # Buscamos la imagen que tiene el atributo 'src' que empieza por https y contiene 'nike'
-            img_element = driver.find_element(By.XPATH, "//img[contains(@src, 'static.nike.com/a/images') or contains(@data-testid, 'hero-img')]")
+            # Buscamos la imagen principal por múltiples métodos
+            img_element = driver.find_element(By.CSS_SELECTOR, 'img[data-testid="hero-img"], .pdp-6-up-image img, img[alt*="' + nombre[:5] + '"]')
+            raw_url = img_element.get_attribute("src")
             
-            # Intentamos sacar la URL del atributo 'src' o 'data-src'
-            foto_url = img_element.get_attribute("src")
-            if not foto_url or "data:image" in foto_url:
-                foto_url = img_element.get_attribute("data-src")
-                
-            if foto_url:
-                # TRUCO HD: Limpiar la URL y forzar resolución máxima
-                base = foto_url.split("?")[0]
-                foto_url = f"{base}?wid=1500&fmt=jpeg&qlt=90"
+            if not raw_url or "data:image" in raw_url:
+                raw_url = img_element.get_attribute("data-src")
+
+            if raw_url:
+                # Limpieza y forzado de resolución 1600px
+                base = raw_url.split("?")[0]
+                foto_url = f"{base}?wid=1600&fmt=jpeg&qlt=95"
         except:
-            # Fallback: buscar cualquier imagen grande en la página
-            imgs = driver.find_elements(By.TAG_NAME, "img")
-            for im in imgs:
-                src = im.get_attribute("src")
-                if src and "t_PDP_1728_v1" in src: # Este es el patrón de Nike para fotos HD
-                    base = src.split("?")[0]
-                    foto_url = f"{base}?wid=1500&fmt=jpeg&qlt=90"
-                    break
+            pass
 
         # 5. Formato Mensaje (Español)
         if precio_original and precio_original != precio_final:
@@ -124,7 +134,8 @@ def obtener_datos_nike(driver, url):
         else:
             texto_precio = f"<b>{precio_final}</b>"
 
-        aviso_promo = "\n\n🎁 <b>¡DESCUENTO EXTRA!</b>\nEste modelo tiene una rebaja adicional al añadirlo al carrito." if promo_extra else ""
+        # Aviso de descuento con emoji llamativo
+        aviso_promo = "\n\n🚨 <b>¡OFERTA OCULTA DETECTADA!</b>\nEste modelo tiene un <b>descuento adicional</b> al añadirlo al carrito o usar código." if promo_extra else ""
 
         mensaje = (
             f"🇺🇸 <b>ALERTA NIKE USA</b>\n\n"
