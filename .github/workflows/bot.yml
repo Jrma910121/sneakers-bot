@@ -2,7 +2,7 @@ name: Nike Price Scraper
 
 on:
   schedule:
-    - cron: '0 14,22 * * *' # Se ejecuta 2 veces al día
+    - cron: '0 15,22 * * *' # Se ejecuta 2 veces al día
   workflow_dispatch: # Permite ejecución manual
 
 jobs:
