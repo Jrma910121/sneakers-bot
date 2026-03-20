@@ -1,10 +1,4 @@
-import time
 import requests
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 
 # ---------------------------
 # Configuración Telegram
@@ -54,7 +48,6 @@ URLS = [
     "https://www.nike.com/t/sb-air-max-95-skate-shoes-p6pzgr/HF7545-002",
     "https://www.nike.com/t/air-vapormax-plus-mens-shoes-nC0dzF/CK0900-001",
     "https://www.nike.com/t/air-max-95-g-golf-shoes-pqM06obj/HV4696-002",
-    # ... agrega el resto
 ]
 
 # ---------------------------
@@ -62,44 +55,31 @@ URLS = [
 # ---------------------------
 def obtener_info_producto(url):
     try:
-        options = Options()
-        options.add_argument("--headless")
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
-        driver = webdriver.Chrome(options=options)
+        # Extrae el SKU (última parte de la URL)
+        sku = url.rstrip("/").split("/")[-1]
 
-        driver.get(url)
+        # Endpoint de Nike para obtener info del producto
+        api_url = f"https://api.nike.com/product_feed/threads/v2/?filter=marketplace({sku})"
+        headers = {"User-Agent": "Mozilla/5.0"}  # simula un navegador
+        r = requests.get(api_url, headers=headers)
+        data = r.json()
 
-        wait = WebDriverWait(driver, 10)
+        # El JSON tiene la info en "objects"
+        if "objects" in data and len(data["objects"]) > 0:
+            prod = data["objects"][0]
 
-        # Nombre del producto
-        try:
-            nombre_tag = wait.until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "h1[data-test='product-title']"))
-            )
-            nombre = nombre_tag.text
-        except:
-            nombre = "Producto Nike"
-
-        # Precio dinámico
-        try:
-            precio_tag = wait.until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, '[data-testid="currentPrice-container"]'))
-            )
-            precio_texto = precio_tag.text.replace("$", "").replace(",", "")
-            precio = float(precio_texto)
-        except:
+            nombre = prod.get("title", "Producto Nike")
             precio = None
-
-        # Foto del producto
-        try:
-            foto_tag = driver.find_element(By.CSS_SELECTOR, 'img[data-testid="hero-image"]')
-            foto_url = foto_tag.get_attribute("src")
-        except:
+            if "price" in prod:
+                precio = float(prod["price"]["current"]["raw"])
             foto_url = None
+            if "imageUrls" in prod and len(prod["imageUrls"].get("productImage", [])) > 0:
+                foto_url = prod["imageUrls"]["productImage"][0]
 
-        driver.quit()
-        return nombre, precio, foto_url
+            return nombre, precio, foto_url
+
+        return "Producto Nike", None, None
+
     except Exception as e:
         print("Error:", e)
         return None, None, None
