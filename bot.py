@@ -71,7 +71,7 @@ def obtener_precio_usa(driver, url):
 def main():
     # --- LISTA DE PRODUCTOS USA ---
     urls = [
-        "https://www.nike.com/t/air-force-1-07-mens-shoes-j1G9vB/CW2288-111", # Ejemplo USA
+        "https://www.nike.com/t/air-force-1-07-mens-shoes-jBrhbr/CT2302-100", # Ejemplo USA
         # Añade aquí más links de nike.com (sin /es/ o /mx/)
     ]
 
