@@ -8,22 +8,34 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from webdriver_manager.chrome import ChromeDriverManager
 
-def enviar_telegram_con_foto(mensaje, foto_url):
-    """Envía una foto con un texto descriptivo y sin vista previa de link."""
+def enviar_notificacion(mensaje, foto_url=None):
     token = os.getenv("TELEGRAM_TOKEN")
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
-    if not token or not chat_id: return
     
-    # Usamos sendPhoto en lugar de sendMessage
-    url = f"https://api.telegram.org/bot{token}/sendPhoto"
-    payload = {
-        "chat_id": chat_id,
-        "photo": foto_url,
-        "caption": mensaje,
-        "parse_mode": "Markdown"
-    }
-    # Al enviar como foto, la vista previa del link del mensaje no se genera
-    requests.post(url, json=payload)
+    # Si tenemos una URL de foto válida, intentamos enviarla
+    if foto_url and foto_url.startswith("http"):
+        url_api = f"https://api.telegram.org/bot{token}/sendPhoto"
+        payload = {
+            "chat_id": chat_id,
+            "photo": foto_url,
+            "caption": mensaje,
+            "parse_mode": "Markdown"
+        }
+    else:
+        # Si no hay foto, enviamos solo texto para asegurar que llegue algo
+        url_api = f"https://api.telegram.org/bot{token}/sendMessage"
+        payload = {
+            "chat_id": chat_id,
+            "text": mensaje,
+            "parse_mode": "Markdown",
+            "disable_web_page_preview": True # ESTO QUITA LA VISTA PREVIA FEA
+        }
+    
+    try:
+        r = requests.post(url_api, json=payload)
+        print(f"Respuesta Telegram: {r.status_code}")
+    except Exception as e:
+        print(f"Error enviando a Telegram: {e}")
 
 def iniciar_driver():
     chrome_options = Options()
@@ -41,40 +53,39 @@ def iniciar_driver():
     })
     return driver
 
-def obtener_datos_nike_usa(driver, url):
+def obtener_datos_nike(driver, url):
     try:
         driver.get(url)
-        time.sleep(random.uniform(8, 12))
+        time.sleep(random.uniform(10, 15)) # Nike USA es lenta cargando
         
-        # 1. Obtener Nombre
+        # 1. Nombre
         try:
             nombre = driver.find_element(By.ID, "pdp_product_title").text
         except:
-            nombre = "Nike Product"
+            nombre = "Nike Sneaker"
 
-        # 2. Obtener Precio
-        precio = "Not found"
-        elementos_precio = driver.find_elements(By.XPATH, "//*[contains(text(), '$')]")
-        for el in elementos_precio:
-            texto = el.text.strip()
-            if "$" in texto and len(texto) < 12 and any(c.isdigit() for c in texto):
-                precio = texto
-                break
-
-        # 3. Obtener Imagen del Producto (Mejorado)
-        # Nike usa imágenes con el atributo 'alt' igual al nombre del producto o clases específicas
-        foto_url = "https://www.nike.com/static/images/logo.png" # Imagen por defecto si falla
+        # 2. Precio
+        precio = "Check site"
         try:
-            # Buscamos la primera imagen del carrusel de producto
-            img_element = driver.find_element(By.CSS_SELECTOR, "img[data-testid='hero-img'], img.css-viha7l")
-            foto_url = img_element.get_attribute("src")
+            # Buscamos por el atributo data-test que es el más fiable en USA
+            precio_el = driver.find_element(By.CSS_SELECTOR, '[data-test="product-price"], [data-test="product-price-reduced"]')
+            precio = precio_el.text
         except:
-            try:
-                # Intento alternativo
-                img_element = driver.find_element(By.CSS_SELECTOR, "#pdp-6-up-image-0, .pdp-6-up-image")
-                foto_url = img_element.get_attribute("src")
-            except:
-                pass
+            # Fallback a buscar el símbolo $
+            elementos = driver.find_elements(By.XPATH, "//*[contains(text(), '$')]")
+            for el in elementos:
+                if "$" in el.text and len(el.text) < 15:
+                    precio = el.text
+                    break
+
+        # 3. Imagen (Búsqueda más profunda)
+        foto_url = None
+        try:
+            # Nike USA usa mucho el atributo data-testid="hero-img"
+            img_el = driver.find_element(By.CSS_SELECTOR, 'img[data-testid="hero-img"], .css-viha7l, img[alt*="' + nombre[:10] + '"]')
+            foto_url = img_el.get_attribute("src")
+        except:
+            print("No se pudo extraer la imagen del producto")
 
         mensaje = (
             f"🇺🇸 *NIKE USA ALERT*\n\n"
@@ -86,7 +97,7 @@ def obtener_datos_nike_usa(driver, url):
         return mensaje, foto_url
 
     except Exception as e:
-        return f"❌ Error: {str(e)[:50]}", None
+        return f"❌ Error monitoreando: {str(e)[:50]}", None
 
 def main():
     urls = [
@@ -95,13 +106,8 @@ def main():
 
     driver = iniciar_driver()
     for link in urls:
-        mensaje, foto = obtener_datos_nike_usa(driver, link)
-        if foto:
-            enviar_telegram_con_foto(mensaje, foto)
-        else:
-            # Si no hay foto, enviar solo texto (fallback)
-            requests.post(f"https://api.telegram.org/bot{os.getenv('TELEGRAM_TOKEN')}/sendMessage", 
-                          json={"chat_id": os.getenv("TELEGRAM_CHAT_ID"), "text": mensaje, "parse_mode": "Markdown"})
+        mensaje, foto = obtener_datos_nike(driver, link)
+        enviar_notificacion(mensaje, foto)
         time.sleep(5)
     
     driver.quit()
