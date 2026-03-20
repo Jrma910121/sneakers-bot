@@ -34,7 +34,6 @@ def iniciar_driver():
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
-    
     service = Service(ChromeDriverManager().install())
     driver = webdriver.Chrome(service=service, options=chrome_options)
     driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {"source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"})
@@ -45,7 +44,7 @@ def obtener_datos_nike(driver, url):
         driver.get(url)
         time.sleep(6)
         
-        # Scroll para cargar elementos dinámicos e imágenes
+        # Scroll para disparar carga de elementos
         driver.execute_script("window.scrollTo(0, 600);")
         time.sleep(2)
         driver.execute_script("window.scrollTo(0, 0);")
@@ -57,14 +56,15 @@ def obtener_datos_nike(driver, url):
         except:
             nombre = "Producto Nike"
 
-        # 2. DETECCIÓN DE DESCUENTO EXTRA EN CARRITO (NUEVO)
+        # 2. DETECCIÓN DE DESCUENTO EN CARRITO
         promo_extra = False
         try:
-            # Escaneamos todo el texto de la página en busca de palabras clave de Nike USA
             texto_web = driver.find_element(By.TAG_NAME, "body").text.lower()
+            # Buscamos patrones comunes de Nike USA
             if ("extra" in texto_web and "cart" in texto_web) or \
                ("extra" in texto_web and "checkout" in texto_web) or \
-               ("discount applied in bag" in texto_web):
+               ("discount applied in bag" in texto_web) or \
+               ("extra" in texto_web and "off" in texto_web):
                 promo_extra = True
         except:
             pass
@@ -87,7 +87,6 @@ def obtener_datos_nike(driver, url):
                 for p in precios_encontrados:
                     val = ''.join(c for c in p if c.isdigit() or c == '.')
                     if val: nums_raw.append(float(val))
-                
                 nums = sorted(list(set(nums_raw)), reverse=True)
                 if len(nums) >= 2:
                     precio_original = f"${nums[0]:.2f}"
@@ -99,16 +98,15 @@ def obtener_datos_nike(driver, url):
         elif len(precios_encontrados) == 1:
             precio_final = precios_encontrados[0]
 
-        # 4. Imagen con CALIDAD HD (NUEVO)
+        # 4. Imagen con CALIDAD HD
         foto_url = None
         selectors_img = ['img[data-testid="hero-img"]', '.css-viha7l', 'img[alt*="' + nombre[:5] + '"]', '.pdp-6-up-image']
-        
         for sel in selectors_img:
             try:
                 img_el = driver.find_element(By.CSS_SELECTOR, sel)
                 temp_url = img_el.get_attribute("src")
                 if temp_url and "data:image" not in temp_url:
-                    # Forzamos resolución HD (1200px)
+                    # Forzamos HD 1200px
                     if "?" in temp_url:
                         base = temp_url.split("?")[0]
                         foto_url = f"{base}?wid=1200&fmt=jpeg&qlt=90"
@@ -124,7 +122,7 @@ def obtener_datos_nike(driver, url):
         else:
             display_price = f"<b>{precio_final}</b>"
 
-        # Aviso de descuento en carrito
+        # Aviso de descuento en carrito (SOLO SI SE DETECTA)
         aviso_carrito = "\n\n🎁 <b>¡DESCUENTO EXTRA!</b>\nEste producto tiene una rebaja adicional al añadirlo al carrito." if promo_extra else ""
 
         mensaje = (
@@ -143,7 +141,6 @@ def main():
         "https://www.nike.com/t/air-force-1-07-mens-shoes-jBrhbr/CT2302-100",
         "https://www.nike.com/t/air-max-excee-mens-shoes-vl97pm/FZ5486-007"
     ]
-
     driver = iniciar_driver()
     for link in urls:
         mensaje, foto = obtener_datos_nike(driver, link)
