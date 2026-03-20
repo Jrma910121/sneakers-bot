@@ -1,51 +1,83 @@
+import time
 import requests
+import os
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
 from bs4 import BeautifulSoup
-from telegram import Bot
 
-# --- CONFIGURACIÓN ---
-TOKEN = "8759569270:AAExdcBmlmU-KrOo_80AZN_agXboIxU8k50"  # Reemplaza con tu token
-CHAT_ID = "8751177346"            # Reemplaza con tu chat ID
-bot = Bot(token=TOKEN)
+# Configuración (Usa variables de entorno para seguridad)
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-# --- FUNCIÓN PARA EXTRAER INFO DEL PRODUCTO ---
-def obtener_info_producto(url):
+URLS = [
+    "https://www.nike.com/t/zoom-vomero-5-mens-shoes-MgsTqZ/HF1553-006",
+    # ... el resto de tus URLs
+]
+
+def configurar_driver():
+    options = Options()
+    options.add_argument("--headless")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-gpu")
+    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+    
+    service = Service(ChromeDriverManager().install())
+    driver = webdriver.Chrome(service=service, options=options)
+    return driver
+
+def obtener_info_producto(driver, url):
     try:
-        headers = {"User-Agent": "Mozilla/5.0"}
-        r = requests.get(url, headers=headers)
-        soup = BeautifulSoup(r.text, "html.parser")
+        driver.get(url)
+        time.sleep(3) # Nike a veces tarda en renderizar el JS
+        
+        soup = BeautifulSoup(driver.page_source, "html.parser")
 
-        # Nombre y subtitulo
-        nombre_tag = soup.find("h1", {"data-testid": "product_title"})
-        subtitulo_tag = soup.find("h2", {"data-testid": "product_subtitle"})
-        nombre = nombre_tag.text.strip() if nombre_tag else "Producto Nike"
-        subtitulo = subtitulo_tag.text.strip() if subtitulo_tag else ""
+        # Selectores mediante Meta Tags (más estables)
+        foto_tag = soup.find("meta", property="og:image")
+        foto_url = foto_tag["content"] if foto_tag else None
 
-        # Precio actual
-        precio_tag = soup.find("span", {"data-testid": "currentPrice-container"})
-        precio = precio_tag.text.strip() if precio_tag else "Precio no disponible"
+        nombre_tag = soup.find("meta", property="og:title")
+        nombre = nombre_tag["content"] if nombre_tag else "Producto Nike"
 
-        # Imagen principal
-        foto_tag = soup.find("img", {"data-testid": "HeroImg"})
-        foto_url = foto_tag["src"] if foto_tag else None
+        precio_tag = soup.find("meta", property="product:price:amount")
+        precio = float(precio_tag["content"]) if precio_tag else None
 
-        return nombre, subtitulo, precio, foto_url
-
+        return nombre, precio, foto_url
     except Exception as e:
-        print("Error al obtener producto:", e)
-        return "Producto Nike", "", "Precio no disponible", None
+        print(f"Error en {url}: {e}")
+        return None, None, None
 
-# --- FUNCIÓN PARA ENVIAR MENSAJE A TELEGRAM ---
-def enviar_telegram(producto_url):
-    nombre, subtitulo, precio, foto_url = obtener_info_producto(producto_url)
+def mensaje_motivacional(precio):
+    if precio is None: return "❓ Precio no disponible."
+    if precio < 90: return "🔥 ¡Excelente precio! ¡Es hora de comprar!"
+    if precio <= 110: return "💡 Buen precio, tú decides."
+    return "⚠️ Precio alto, tal vez espera un poco."
 
-    mensaje = f"{nombre}\n{subtitulo}\nPrecio: {precio}\n{producto_url}"
-
-    if foto_url:
-        bot.send_photo(chat_id=CHAT_ID, photo=foto_url, caption=mensaje)
+def enviar_telegram(foto, mensaje, url):
+    base_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
+    payload = {"chat_id": TELEGRAM_CHAT_ID, "caption": f"{mensaje}\n\nCompra aquí: {url}"}
+    
+    if foto:
+        payload["photo"] = foto
+        requests.post(f"{base_url}/sendPhoto", data=payload)
     else:
-        bot.send_message(chat_id=CHAT_ID, text=mensaje)
+        payload["text"] = payload.pop("caption")
+        requests.post(f"{base_url}/sendMessage", data=payload)
 
-# --- EJEMPLO DE USO ---
+def main():
+    driver = configurar_driver()
+    try:
+        for url in URLS:
+            nombre, precio, foto = obtener_info_producto(driver, url)
+            if nombre:
+                print(f"Procesado: {nombre} - ${precio}")
+                mensaje = mensaje_motivacional(precio)
+                enviar_telegram(foto, f"{nombre}\nPrecio: ${precio}\n{mensaje}", url)
+    finally:
+        driver.quit() # Cerramos el navegador al final de todo el ciclo
+
 if __name__ == "__main__":
-    url_producto = "https://www.nike.com/t/air-max-plus-g-golf-shoes-etVKhXd4"  # Cambia por el producto que quieras
-    enviar_telegram(url_producto)
+    main()
