@@ -6,8 +6,6 @@ from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 
 def enviar_telegram(mensaje):
@@ -20,82 +18,85 @@ def enviar_telegram(mensaje):
 
 def iniciar_driver():
     chrome_options = Options()
-    chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--headless=new") # Nueva versión de headless más indetectable
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--disable-blink-features=AutomationControlled") # Oculta que es Selenium
+    
+    # --- EVITAR DETECCIÓN ---
+    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     chrome_options.add_experimental_option('useAutomationExtension', False)
     
-    # User-Agent muy específico de una versión actual de Windows
+    # User-Agent más "fresco"
     chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
     
     service = Service(ChromeDriverManager().install())
     driver = webdriver.Chrome(service=service, options=chrome_options)
     
-    # Cambiar la propiedad webdriver a undefined para engañar a Nike
-    driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+    # Inyectar script para eliminar rastro de WebDriver
+    driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
+        "source": """
+            Object.defineProperty(navigator, 'webdriver', {
+                get: () => undefined
+            })
+        """
+    })
     return driver
 
 def obtener_precio_nike(driver, url):
     try:
-        driver.get(url)
-        # Espera aleatoria para simular carga humana
-        time.sleep(random.uniform(5.5, 8.5))
+        # Entrar primero a la home de Nike para generar cookies "limpias"
+        driver.get("https://www.nike.com")
+        time.sleep(random.uniform(2, 4))
         
-        # Hacer un pequeño scroll hacia abajo
-        driver.execute_script("window.scrollTo(0, 300);")
+        # Ahora sí vamos al producto
+        driver.get(url)
+        
+        # Espera larga: Nike a veces muestra una pantalla de carga blanca (intersticial)
+        time.sleep(random.uniform(10, 15))
+        
+        # Scroll errático para parecer humano
+        driver.execute_script(f"window.scrollTo(0, {random.randint(300, 700)});")
         time.sleep(2)
 
-        # Intentar obtener el nombre
+        # Intentar capturar el nombre y precio con un selector de texto genérico 
+        # (Si Nike bloquea los IDs, buscamos por contenido)
         try:
-            nombre = driver.find_element(By.ID, "pdp_product_title").text
+            nombre = driver.find_element(By.CSS_SELECTOR, "h1, #pdp_product_title").text
         except:
-            nombre = "Producto Nike"
+            nombre = "Producto"
 
-        # Búsqueda agresiva de precio
         precio = None
-        # Selectores en orden de prioridad
-        selectores = [
-            'span[data-test="product-price"]',
-            'div[data-test="product-price-reduced"]',
-            '.product-price',
-            '.is--current-price',
-            '[data-test="product-price-actual"]'
-        ]
-
-        for selector in selectores:
-            try:
-                elementos = driver.find_elements(By.CSS_SELECTOR, selector)
-                for el in elementos:
-                    if el.text and ("€" in el.text or "$" in el.text):
-                        precio = el.text
-                        break
-                if precio: break
-            except:
-                continue
+        # Intentamos buscar cualquier elemento que contenga el símbolo de moneda
+        elementos = driver.find_elements(By.XPATH, "//*[contains(text(), '€') or contains(text(), '$')]")
+        
+        for el in elementos:
+            texto = el.text.strip()
+            # Filtramos para que sea un número corto (un precio) y no un párrafo largo
+            if 0 < len(texto) < 15 and any(char.isdigit() for char in texto):
+                precio = texto
+                break
 
         if precio:
             return f"✅ *{nombre}*\n💰 Precio: {precio}\n🔗 [Link]({url})"
         else:
-            # Si falla, tomamos una captura de consola para debug (opcional)
-            print(f"Fallo en {nombre}. HTML parcial: {driver.page_source[:500]}")
-            return f"⚠️ *{nombre}*: No se detectó precio. Nike bloqueó el script."
+            # Si sigue fallando, mandamos lo que el bot "ve" en el título de la pestaña
+            titulo_pagina = driver.title
+            return f"⚠️ *{nombre}*: Bloqueo detectado. (Título detectado: {titulo_pagina})"
 
     except Exception as e:
-        return f"❌ Error en: {url[:40]}... \n{str(e)[:50]}"
+        return f"❌ Error técnico: {str(e)[:50]}"
 
 def main():
     urls = [
-        "https://www.nike.com/es/t/air-force-1-07-zapatillas-S9S7D8/CW2288-111",
-        # Agrega más aquí
+        "https://www.nike.com/es/t/air-force-1-07-zapatillas-S9S7D8/CW2288-111"
     ]
 
     driver = iniciar_driver()
     for link in urls:
         resultado = obtener_precio_nike(driver, link)
         enviar_telegram(resultado)
-        time.sleep(random.uniform(3, 6)) # Pausa entre productos
+        time.sleep(random.uniform(5, 10))
     
     driver.quit()
 
