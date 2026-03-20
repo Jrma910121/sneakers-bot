@@ -1,5 +1,5 @@
 import requests
-from bs4 import BeautifulSoup
+import re
 import json
 
 # ---------------------------
@@ -14,7 +14,7 @@ TELEGRAM_CHAT_ID = "8751177346"
 URLS = [
     "https://www.nike.com/t/zoom-vomero-5-mens-shoes-MgsTqZ/HF1553-006",
     "https://www.nike.com/t/zoom-vomero-5-mens-shoes-MgsTqZ/BV1358-003",
-    # ... agrega el resto de tus URLs aquí
+    # ... agrega más URLs aquí
 ]
 
 # ---------------------------
@@ -22,36 +22,33 @@ URLS = [
 # ---------------------------
 def obtener_info_producto(url):
     """
-    Obtiene nombre, precio e imagen de un producto Nike
-    usando JSON-LD de la página (sin Selenium)
+    Extrae info de producto Nike: nombre, precio, foto
+    usando JSON interno de la página.
     """
     try:
         headers = {"User-Agent": "Mozilla/5.0"}
         r = requests.get(url, headers=headers)
-        soup = BeautifulSoup(r.text, "html.parser")
+        html = r.text
 
-        # Buscar el JSON-LD que contiene los datos del producto
-        json_ld_tag = soup.find("script", type="application/ld+json")
-        if not json_ld_tag:
+        # Buscar el JSON que contiene los datos reales
+        match = re.search(r'window\.__INITIAL_STATE__\s*=\s*({.*});', html)
+        if not match:
             return "Producto Nike", None, None
 
-        data = json.loads(json_ld_tag.string)
+        data = json.loads(match.group(1))
 
-        # Nombre
-        nombre = data.get("name", "Producto Nike")
+        # Acceder a los datos de la página
+        product_id = list(data["products"].keys())[0]
+        product = data["products"][product_id]
 
-        # Precio
-        precio = None
-        if "offers" in data and "price" in data["offers"]:
-            precio = float(data["offers"]["price"])
-
-        # Imagen
+        nombre = product.get("fullTitle", "Producto Nike")
+        precio = product.get("merchPrice", {}).get("currentPrice")
         foto_url = None
-        if "image" in data:
-            if isinstance(data["image"], list):
-                foto_url = data["image"][0]
-            else:
-                foto_url = data["image"]
+
+        # Fotos
+        images = product.get("images", [])
+        if images:
+            foto_url = images[0].get("url")
 
         return nombre, precio, foto_url
 
@@ -60,9 +57,6 @@ def obtener_info_producto(url):
         return "Producto Nike", None, None
 
 def mensaje_motivacional(precio):
-    """
-    Mensaje según el precio
-    """
     if precio is None:
         return "❓ Precio no disponible, revisa más tarde."
     elif precio < 90:
@@ -73,9 +67,6 @@ def mensaje_motivacional(precio):
         return "⚠️ Precio alto, tal vez espera un poco."
 
 def enviar_telegram(foto, mensaje, url):
-    """
-    Envía la info del producto a Telegram
-    """
     text = f"{mensaje}\n\nCompra aquí: {url}"
     if foto:
         requests.get(
@@ -89,9 +80,6 @@ def enviar_telegram(foto, mensaje, url):
         )
 
 def main():
-    """
-    Recorre todas las URLs, obtiene info y envía Telegram
-    """
     for url in URLS:
         nombre, precio, foto = obtener_info_producto(url)
         print(f"DEBUG → {nombre} | Precio: {precio} | Foto: {foto}")
