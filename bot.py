@@ -1,22 +1,19 @@
-# bot.py
-import os
 import time
 import requests
 from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
+from bs4 import BeautifulSoup
 
-# ---------- Configuración de Telegram ----------
+# ---------------------------
+# Configuración Telegram
+# ---------------------------
 TELEGRAM_TOKEN = "8759569270:AAExdcBmlmU-KrOo_80AZN_agXboIxU8k50"
 TELEGRAM_CHAT_ID = "8751177346"
-if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
-    raise Exception("❌ Faltan variables de entorno (Secrets): TELEGRAM_TOKEN o TELEGRAM_CHAT_ID")
 
-# ---------- Lista de URLs a monitorear ----------
-PRODUCT_URLS = [
+# ---------------------------
+# Lista de URLs de productos
+# ---------------------------
+URLS = [
     "https://www.nike.com/t/zoom-vomero-5-mens-shoes-MgsTqZ/HF1553-006",
     "https://www.nike.com/t/zoom-vomero-5-mens-shoes-MgsTqZ/BV1358-003",
     "https://www.nike.com/t/air-max-plus-mens-shoes-x9G2xF/IF4390-001",
@@ -55,61 +52,74 @@ PRODUCT_URLS = [
     "https://www.nike.com/t/sb-air-max-95-skate-shoes-p6pzgr/HF7545-002",
     "https://www.nike.com/t/air-vapormax-plus-mens-shoes-nC0dzF/CK0900-001",
     "https://www.nike.com/t/air-max-95-g-golf-shoes-pqM06obj/HV4696-002",
-    # ... agrega todas tus URLs aquí ...
+    # ... agrega el resto de tus URLs aquí
 ]
 
-# ---------- Funciones ----------
-def enviar_telegram(texto, foto_url=None):
-    """Envía un mensaje a Telegram con imagen opcional"""
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto" if foto_url else f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    data = {"chat_id": TELEGRAM_CHAT_ID, "caption": texto} if foto_url else {"chat_id": TELEGRAM_CHAT_ID, "text": texto}
-    if foto_url:
-        data["photo"] = foto_url
-    response = requests.post(url, data=data)
-    if response.status_code != 200:
-        print(f"❌ Error enviando Telegram: {response.text}")
-
-def mensaje_motivador(precio):
-    """Genera el mensaje motivador según tu lógica"""
-    if precio < 90:
-        return "🔥 ¡Este es un excelente precio! ¡Compra ahora antes de que suba! 🔥"
-    elif 90 <= precio <= 110:
-        return "🙂 Buen precio, depende de ti decidir si comprar ahora."
-    else:
-        return "💸 El precio está alto, quizá convenga esperar a que baje."
-
+# ---------------------------
+# Funciones
+# ---------------------------
 def obtener_info_producto(url):
-    """Extrae el nombre, precio y foto de un producto usando Selenium"""
-    options = Options()
-    options.add_argument("--headless=new")
-    options.add_argument("--disable-gpu")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    driver = webdriver.Chrome(options=options)  # Selenium Manager detecta el driver automáticamente
-
-    driver.get(url)
-    wait = WebDriverWait(driver, 10)
     try:
-        nombre = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'h1.headline-1'))).text
-        precio_text = driver.find_element(By.CSS_SELECTOR, 'div.product-price > div > span').text
-        precio = float(precio_text.replace("$","").replace(",",""))
-        foto_url = driver.find_element(By.CSS_SELECTOR, 'picture img').get_attribute("src")
-    except Exception as e:
-        print(f"❌ Error obteniendo datos de {url}: {e}")
-        nombre, precio, foto_url = None, None, None
-    driver.quit()
-    return nombre, precio, foto_url
+        options = Options()
+        options.add_argument("--headless")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        driver = webdriver.Chrome(options=options)
 
-# ---------- Main ----------
+        driver.get(url)
+        time.sleep(2)  # espera a que cargue la página
+
+        html = driver.page_source
+        driver.quit()
+
+        soup = BeautifulSoup(html, "html.parser")
+
+        # Foto del producto
+        foto_tag = soup.find("meta", property="og:image")
+        foto_url = foto_tag["content"] if foto_tag else None
+
+        # Nombre del producto
+        nombre_tag = soup.find("meta", property="og:title")
+        nombre = nombre_tag["content"] if nombre_tag else "Producto Nike"
+
+        # Precio
+        precio_tag = soup.find("meta", property="product:price:amount")
+        precio = float(precio_tag["content"]) if precio_tag else None
+
+        return nombre, precio, foto_url
+    except Exception as e:
+        print("Error:", e)
+        return None, None, None
+
+def mensaje_motivacional(precio):
+    if precio is None:
+        return "❓ Precio no disponible, revisa más tarde."
+    elif precio < 90:
+        return "🔥 ¡Excelente precio! ¡Es hora de comprar!"
+    elif 90 <= precio <= 110:
+        return "💡 Buen precio, tu decides si aprovecharlo."
+    else:
+        return "⚠️ Precio alto, tal vez espera un poco."
+
+def enviar_telegram(foto, mensaje, url):
+    text = f"{mensaje}\n\nCompra aquí: {url}"
+    if foto:
+        requests.get(
+            f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto",
+            params={"chat_id": TELEGRAM_CHAT_ID, "photo": foto, "caption": text},
+        )
+    else:
+        requests.get(
+            f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+            params={"chat_id": TELEGRAM_CHAT_ID, "text": text},
+        )
+
 def main():
-    for url in PRODUCT_URLS:
-        nombre, precio, foto_url = obtener_info_producto(url)
-        if nombre and precio:
-            print(f"DEBUG → {nombre} | Precio: {precio}")
-            texto = f"👟 {nombre}\n{mensaje_motivador(precio)}\n🛒 Comprar aquí: {url}"
-            enviar_telegram(texto, foto_url=foto_url)
-        else:
-            print(f"DEBUG → {nombre} | Precio: {precio}")
+    for url in URLS:
+        nombre, precio, foto = obtener_info_producto(url)
+        print(f"DEBUG → {nombre} | Precio: {precio}")
+        mensaje = mensaje_motivacional(precio)
+        enviar_telegram(foto, f"{nombre}\n{mensaje}", url)
 
 if __name__ == "__main__":
     main()
