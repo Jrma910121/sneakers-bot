@@ -14,9 +14,11 @@ def enviar_notificacion(mensaje, foto_url=None):
     
     if foto_url and foto_url.startswith("http"):
         url_api = f"https://api.telegram.org/bot{token}/sendPhoto"
+        # Usamos caption para el mensaje debajo de la foto
         payload = {"chat_id": chat_id, "photo": foto_url, "caption": mensaje, "parse_mode": "HTML"}
         r = requests.post(url_api, json=payload)
         if r.status_code != 200:
+            # Fallback a solo texto si la foto falla
             url_api = f"https://api.telegram.org/bot{token}/sendMessage"
             payload = {"chat_id": chat_id, "text": mensaje, "parse_mode": "HTML", "disable_web_page_preview": True}
             requests.post(url_api, json=payload)
@@ -30,52 +32,35 @@ def iniciar_driver():
     chrome_options.add_argument("--headless=new")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--window-size=2560,1440") # Resolución 2K para forzar carga HD
+    # Forzamos una ventana grande para que Nike cargue mejores recursos
+    chrome_options.add_argument("--window-size=1920,1080")
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-    chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+    chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
     
     service = Service(ChromeDriverManager().install())
     driver = webdriver.Chrome(service=service, options=chrome_options)
-    driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
-        "source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
-    })
+    driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {"source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"})
     return driver
 
 def obtener_datos_nike(driver, url):
     try:
         driver.get(url)
         time.sleep(6)
-        # Scroll lento para disparar el Lazy Load de imágenes HD
-        driver.execute_script("window.scrollTo(0, 800);")
-        time.sleep(3)
-        driver.execute_script("window.scrollTo(0, 0);")
-        time.sleep(7)
         
-        # 1. Nombre
+        # --- TRUCO DEL SCROLL PARA CARGAR LA FOTO ---
+        driver.execute_script("window.scrollTo(0, 600);")
+        time.sleep(2)
+        driver.execute_script("window.scrollTo(0, 0);")
+        time.sleep(7) 
+        
+        # 1. Nombre (Españolizado)
         try:
             nombre = driver.find_element(By.ID, "pdp_product_title").text
         except:
-            nombre = "Zapatilla Nike"
+            nombre = "Producto Nike"
 
-        # 2. Detección de Descuento Extra (Banner de Promociones)
-        promo_extra = False
-        try:
-            # Buscamos en banners de promo y mensajes de "Messaging" de Nike
-            promos = driver.find_elements(By.CSS_SELECTOR, '.messaging-banner, .pdp-messaging, .pdp-promo-banner')
-            texto_completo = driver.find_element(By.TAG_NAME, "body").text.lower()
-            
-            check_words = ["extra", "off in cart", "off at checkout", "discount applied in bag"]
-            if any(word in texto_completo for word in check_words):
-                promo_extra = True
-            for p in promos:
-                if "extra" in p.text.lower():
-                    promo_extra = True
-                    break
-        except:
-            pass
-
-        # 3. Precios
+        # 2. Precios
         precios_encontrados = []
         elementos = driver.find_elements(By.XPATH, "//*[contains(text(), '$')]")
         for el in elementos:
@@ -84,7 +69,7 @@ def obtener_datos_nike(driver, url):
                 if t not in precios_encontrados:
                     precios_encontrados.append(t)
 
-        precio_final = "Ver web"
+        precio_final = "Ver en web"
         precio_original = ""
         
         if len(precios_encontrados) >= 2:
@@ -93,22 +78,25 @@ def obtener_datos_nike(driver, url):
                 for p in precios_encontrados:
                     val = ''.join(c for c in p if c.isdigit() or c == '.')
                     if val: nums_raw.append(float(val))
+                
                 nums = sorted(list(set(nums_raw)), reverse=True)
                 if len(nums) >= 2:
                     precio_original = f"${nums[0]:.2f}"
                     precio_final = f"${nums[-1]:.2f}"
+                else:
+                    precio_final = f"${nums[0]:.2f}"
             except:
                 precio_final = precios_encontrados[0]
         elif len(precios_encontrados) == 1:
             precio_final = precios_encontrados[0]
 
-        # 4. Imagen ULTRA HD
+        # 3. Imagen (MEJORA DE CALIDAD)
         foto_url = None
-        # Priorizamos el selector de la imagen del carrusel que suele ser la de mayor calidad
         selectors_img = [
-            'img.pdp-6-up-image',
             'img[data-testid="hero-img"]',
-            'img.css-viha7l'
+            '.css-viha7l',
+            'img[alt*="' + nombre[:5] + '"]',
+            '.pdp-6-up-image'
         ]
         
         for sel in selectors_img:
@@ -116,42 +104,45 @@ def obtener_datos_nike(driver, url):
                 img_el = driver.find_element(By.CSS_SELECTOR, sel)
                 temp_url = img_el.get_attribute("src")
                 if temp_url and "data:image" not in temp_url:
-                    # Forzamos máxima resolución y calidad 100
-                    base = temp_url.split("?")[0]
-                    foto_url = f"{base}?wid=2000&fmt=jpeg&qlt=100"
+                    # --- TRUCO HD ---
+                    # Nike usa parámetros en la URL para el tamaño. Forzamos 1200px.
+                    if "?" in temp_url:
+                        base_url = temp_url.split("?")[0]
+                        foto_url = f"{base_url}?wid=1200&fmt=jpeg&qlt=90"
+                    else:
+                        foto_url = temp_url
                     break
             except:
                 continue
 
-        # 5. Mensaje
+        # 4. Formato Mensaje (ESPAÑOL)
         if precio_original and precio_original != precio_final:
-            texto_precio = f"<s>{precio_original}</s> 🔥 <b>{precio_final}</b>"
+            display_price = f"<s>{precio_original}</s> 🔥 <b>{precio_final}</b>"
         else:
-            texto_precio = f"<b>{precio_final}</b>"
-
-        aviso_promo = "\n\n🎁 <b>¡DESCUENTO EXTRA!</b>\nEste modelo tiene una rebaja adicional al añadirlo al carrito." if promo_extra else ""
+            display_price = f"<b>{precio_final}</b>"
 
         mensaje = (
             f"🇺🇸 <b>ALERTA NIKE USA</b>\n\n"
             f"👟 <b>Producto:</b> {nombre}\n"
-            f"💰 <b>Precio:</b> {texto_precio}{aviso_promo}\n\n"
+            f"💰 <b>Precio:</b> {display_price}\n\n"
             f'🔗 <a href="{url}">Ver en la Tienda</a>'
         )
         return mensaje, foto_url
 
     except Exception as e:
-        return f"❌ Error: {str(e)[:40]}", None
+        return f"❌ Error: {str(e)[:50]}", None
 
 def main():
     urls = [
         "https://www.nike.com/t/air-force-1-07-mens-shoes-jBrhbr/CT2302-100",
         "https://www.nike.com/t/air-max-excee-mens-shoes-vl97pm/FZ5486-007"
     ]
+
     driver = iniciar_driver()
     for link in urls:
         mensaje, foto = obtener_datos_nike(driver, link)
         enviar_notificacion(mensaje, foto)
-        time.sleep(5)
+        time.sleep(random.uniform(4, 7))
     driver.quit()
 
 if __name__ == "__main__":
