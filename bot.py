@@ -47,7 +47,7 @@ def obtener_datos_nike(driver, url):
     try:
         driver.get(url)
         
-        # Espera activa para que el símbolo $ aparezca en pantalla
+        # Espera activa para carga de elementos de precio
         try:
             WebDriverWait(driver, 15).until(
                 EC.presence_of_element_located((By.XPATH, "//*[contains(text(), '$')]"))
@@ -63,14 +63,76 @@ def obtener_datos_nike(driver, url):
         except:
             nombre = "Zapatilla Nike"
 
-        # 2. Extracción de Precios (Lógica de zona superior)
+        # 2. Extracción de Precios (Lógica de zona superior del producto)
         precio_final = "Consultar"
         precio_original = ""
         
         try:
+            # Extraemos el texto visible para buscar precios reales
             cuerpo_texto = driver.execute_script("return document.body.innerText")
-            # Analizamos solo la parte superior para evitar precios de sugerencias
+            # Limitamos la búsqueda a la parte superior (evita sugerencias de abajo)
             zona_producto = cuerpo_texto[:3500]
             
-            # Buscamos patrones de precio
-            encontrados = re.findall(r'\$\s
+            # EXPRESIÓN REGULAR CORREGIDA: Busca el símbolo $ seguido de números
+            encontrados = re.findall(r'\$\s?(\d+(?:\.\d{2})?)', zona_producto)
+            precios_num = sorted(list(set([float(p) for p in encontrados])), reverse=True)
+            
+            # Filtro de rango lógico (Precios entre $20 y $500 USD)
+            precios_logicos = [p for p in precios_num if 20 <= p <= 500]
+
+            if len(precios_logicos) >= 2:
+                precio_original = f"${precios_logicos[0]:.2f}"
+                precio_final = f"${precios_logicos[-1]:.2f}"
+            elif len(precios_logicos) == 1:
+                precio_final = f"${precios_logicos[0]:.2f}"
+        except:
+            precio_final = "Ver en Web"
+
+        # 3. Imagen en Alta Resolución
+        foto_url = None
+        try:
+            img = driver.find_element(By.XPATH, "//img[contains(@src, 'static.nike.com/a/images') and not(contains(@src, 'width=64'))]")
+            src = img.get_attribute("src")
+            if src:
+                foto_url = src.split('?')[0] + "?wid=1500&fmt=jpeg&qlt=90"
+        except:
+            pass
+
+        # 4. Detección de Promo Extra
+        promo_extra = False
+        if "extra" in zona_producto.lower() and any(x in zona_producto.lower() for x in ["cart", "checkout", "bag", "off"]):
+            promo_extra = True
+
+        # 5. Construcción del Mensaje
+        p_display = f"<s>{precio_original}</s> 🔥 <b>{precio_final}</b>" if precio_original else f"<b>{precio_final}</b>"
+        aviso_promo = "\n\n🎁 <b>¡DESCUENTO EXTRA EN CARRITO!</b>\nEste modelo tiene rebaja adicional al pagar." if promo_extra else ""
+
+        mensaje = (
+            f"🇺🇸 <b>ALERTA NIKE USA</b>\n\n"
+            f"👟 <b>Producto:</b> {nombre}\n"
+            f"💰 <b>Precio:</b> {p_display}\n"
+            f"{aviso_promo}\n"
+            f"--------------------------------\n"
+            f"📌 <i>Nota: Precios antes de taxes (impuestos). El valor final varía según el estado de entrega en USA.</i>\n\n"
+            f"📦 <b>Envío a Colombia:</b> Requiere el uso de casillero virtual para el transporte internacional.\n\n"
+            f'🔗 <a href="{url}">Ver en la Tienda</a>'
+        )
+        return mensaje, foto_url
+
+    except Exception as e:
+        return f"❌ Error de carga: {str(e)[:30]}", None
+
+def main():
+    urls = [
+        "https://www.nike.com/t/air-force-1-07-mens-shoes-jBrhbr/CT2302-100",
+        "https://www.nike.com/t/air-max-excee-mens-shoes-vl97pm/FZ5486-007"
+    ]
+    driver = iniciar_driver()
+    for link in urls:
+        mensaje, foto = obtener_datos_nike(driver, link)
+        enviar_notificacion(mensaje, foto)
+        time.sleep(random.uniform(5, 8))
+    driver.quit()
+
+if __name__ == "__main__":
+    main()
