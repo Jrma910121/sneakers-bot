@@ -9,23 +9,41 @@ from selenium.webdriver.chrome.options import Options
 from webdriver_manager.chrome import ChromeDriverManager
 
 def enviar_notificacion(mensaje, foto_url=None):
+    """Envía la notificación a Telegram. Si la foto falla, envía solo texto."""
     token = os.getenv("TELEGRAM_TOKEN")
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
     
     if foto_url and foto_url.startswith("http"):
         url_api = f"https://api.telegram.org/bot{token}/sendPhoto"
-        payload = {"chat_id": chat_id, "photo": foto_url, "caption": mensaje, "parse_mode": "HTML"}
+        payload = {
+            "chat_id": chat_id, 
+            "photo": foto_url, 
+            "caption": mensaje, 
+            "parse_mode": "HTML"
+        }
         r = requests.post(url_api, json=payload)
+        # Si la foto da error (ej. URL expirada o bloqueada), fallback a mensaje de texto
         if r.status_code != 200:
             url_api = f"https://api.telegram.org/bot{token}/sendMessage"
-            payload = {"chat_id": chat_id, "text": mensaje, "parse_mode": "HTML", "disable_web_page_preview": True}
+            payload = {
+                "chat_id": chat_id, 
+                "text": mensaje, 
+                "parse_mode": "HTML", 
+                "disable_web_page_preview": True
+            }
             requests.post(url_api, json=payload)
     else:
         url_api = f"https://api.telegram.org/bot{token}/sendMessage"
-        payload = {"chat_id": chat_id, "text": mensaje, "parse_mode": "HTML", "disable_web_page_preview": True}
+        payload = {
+            "chat_id": chat_id, 
+            "text": mensaje, 
+            "parse_mode": "HTML", 
+            "disable_web_page_preview": True
+        }
         requests.post(url_api, json=payload)
 
 def iniciar_driver():
+    """Configuración del navegador con parámetros de sigilo y resolución HD."""
     chrome_options = Options()
     chrome_options.add_argument("--headless=new")
     chrome_options.add_argument("--no-sandbox")
@@ -34,16 +52,23 @@ def iniciar_driver():
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+    
     service = Service(ChromeDriverManager().install())
     driver = webdriver.Chrome(service=service, options=chrome_options)
-    driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {"source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"})
+    
+    # Ocultar rastro de automatización
+    driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
+        "source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+    })
     return driver
 
 def obtener_datos_nike(driver, url):
     try:
         driver.get(url)
         time.sleep(5)
-        driver.execute_script("window.scrollTo(0, 500);")
+        
+        # Scroll para activar carga de imágenes y precios dinámicos
+        driver.execute_script("window.scrollTo(0, 600);")
         time.sleep(2)
         driver.execute_script("window.scrollTo(0, 0);")
         time.sleep(8)
@@ -54,18 +79,18 @@ def obtener_datos_nike(driver, url):
         except:
             nombre = "Zapatilla Nike"
 
-        # 2. Detección de Descuento en Carrito
+        # 2. Detección de Descuento Adicional en Carrito
         promo_extra = False
         try:
             texto_pagina = driver.find_element(By.TAG_NAME, "body").text.lower()
-            if ("extra" in texto_pagina and "cart" in texto_pagina) or \
-               ("discount" in texto_pagina and "at checkout" in texto_pagina) or \
-               ("extra" in texto_pagina and "bag" in texto_pagina):
+            keywords = ["extra", "cart", "checkout", "bag", "discount"]
+            # Si contiene 'extra' y alguna referencia al carrito/pago
+            if "extra" in texto_pagina and any(x in texto_pagina for x in ["cart", "bag", "checkout"]):
                 promo_extra = True
         except:
             pass
 
-        # 3. Precios
+        # 3. Extracción de Precios
         precios_encontrados = []
         elementos = driver.find_elements(By.XPATH, "//*[contains(text(), '$')]")
         for el in elementos:
@@ -94,48 +119,62 @@ def obtener_datos_nike(driver, url):
         elif len(precios_encontrados) == 1:
             precio_final = precios_encontrados[0]
 
-        # 4. Imagen
+        # 4. Imagen con MEJORA DE CALIDAD (HD)
         foto_url = None
-        for sel in ['img[data-testid="hero-img"]', '.css-viha7l', 'img[alt*="' + nombre[:5] + '"]']:
+        selectors_img = [
+            'img[data-testid="hero-img"]', 
+            '.css-viha7l', 
+            'img[alt*="' + nombre[:5] + '"]'
+        ]
+        
+        for sel in selectors_img:
             try:
                 img_el = driver.find_element(By.CSS_SELECTOR, sel)
                 temp_url = img_el.get_attribute("src")
                 if temp_url and "data:image" not in temp_url:
-                    foto_url = temp_url
+                    # Limpiamos y forzamos resolución alta (1200px)
+                    if "?" in temp_url:
+                        base = temp_url.split("?")[0]
+                        foto_url = f"{base}?wid=1200&fmt=jpeg&qlt=90"
+                    else:
+                        foto_url = f"{temp_url}?wid=1200"
                     break
             except:
                 continue
 
-        # 5. Formato del Mensaje en ESPAÑOL
+        # 5. Formato del Mensaje (Español + HTML)
         if precio_original and precio_original != precio_final:
-            display_price = f"<s>{precio_original}</s> 🔥 <b>{precio_final}</b>"
+            texto_precio = f"<s>{precio_original}</s> 🔥 <b>{precio_final}</b>"
         else:
-            display_price = f"<b>{precio_final}</b>"
+            texto_precio = f"<b>{precio_final}</b>"
 
-        # Aviso de promoción adicional
         aviso_promo = "\n\n🎁 <b>¡DESCUENTO EXTRA!</b> Este artículo tiene una rebaja adicional al añadirlo al carrito." if promo_extra else ""
 
         mensaje = (
             f"🇺🇸 <b>ALERTA NIKE USA</b>\n\n"
             f"👟 <b>Producto:</b> {nombre}\n"
-            f"💰 <b>Precio:</b> {display_price}{aviso_promo}\n\n"
+            f"💰 <b>Precio:</b> {texto_precio}{aviso_promo}\n\n"
             f'🔗 <a href="{url}">Ver en la Tienda</a>'
         )
         return mensaje, foto_url
 
     except Exception as e:
-        return f"❌ Error: {str(e)[:50]}", None
+        return f"❌ Error en el bot: {str(e)[:50]}", None
 
 def main():
+    # LISTA DE URLs A MONITOREAR
     urls = [
-        "https://www.nike.com/t/air-force-1-07-mens-shoes-jBrhbr/CT2302-100",
+        "https://www.nike.com/t/air-force-1-07-mens-shoes-j1G9vB/CW2288-111",
         "https://www.nike.com/t/air-max-excee-mens-shoes-vl97pm/FZ5486-007"
     ]
+
     driver = iniciar_driver()
     for link in urls:
         mensaje, foto = obtener_datos_nike(driver, link)
         enviar_notificacion(mensaje, foto)
-        time.sleep(5)
+        # Pausa aleatoria para evitar detección entre productos
+        time.sleep(random.uniform(3, 7))
+    
     driver.quit()
 
 if __name__ == "__main__":
