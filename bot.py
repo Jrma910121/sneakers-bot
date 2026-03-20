@@ -50,7 +50,7 @@ def obtener_datos_nike(driver, url):
         # Espera activa para carga de elementos de precio
         try:
             WebDriverWait(driver, 15).until(
-                EC.presence_of_element_located((By.XPATH, "//*[contains(text(), '$')]"))
+                EC.presence_of_element_located((By.XPATH, "//span[@data-testid='currentPrice-container']"))
             )
         except:
             pass
@@ -63,40 +63,43 @@ def obtener_datos_nike(driver, url):
         except:
             nombre = "Zapatilla Nike"
 
-        # 2. Extracción de Precios (Lógica mejorada)
+        # 2. Extracción de Precios usando selector específico de Nike
         precio_final = "Consultar"
         precio_original = ""
         
         try:
-            # Extraemos el texto visible para buscar precios reales
-            cuerpo_texto = driver.execute_script("return document.body.innerText")
-            # Limitamos la búsqueda a la parte media-superior del producto
-            zona_producto = cuerpo_texto[:5000]
+            # Usa el selector específico que encontramos en el HTML
+            precio_element = driver.find_element(By.XPATH, "//span[@data-testid='currentPrice-container']")
+            precio_text = precio_element.text.strip()
             
-            # EXPRESIÓN REGULAR: Busca el símbolo $ seguido de números
-            encontrados = re.findall(r'\$\s?(\d+(?:\.\d{2})?)', zona_producto)
+            # Extrae el número del precio (ej: "$115" -> "115")
+            precio_match = re.search(r'\$\s?(\d+(?:\.\d{2})?)', precio_text)
             
-            if encontrados:
-                precios_num = sorted(list(set([float(p) for p in encontrados])), reverse=True)
-                
-                # Filtro de rango lógico (Precios entre $20 y $500 USD)
-                precios_logicos = [p for p in precios_num if 20 <= p <= 500]
-
-                if len(precios_logicos) >= 2:
-                    # CORREGIDO: El primer precio es el MÁS ALTO (precio original/sin descuento)
-                    # El último es el MÁS BAJO (precio con descuento)
-                    precio_original = f"${precios_logicos[0]:.2f}"   # Precio sin descuento
-                    precio_final = f"${precios_logicos[-1]:.2f}"     # Precio con descuento
-                elif len(precios_logicos) == 1:
-                    precio_final = f"${precios_logicos[0]:.2f}"
-                else:
-                    precio_final = "Ver en Web"
+            if precio_match:
+                precio_final = f"${precio_match.group(1)}"
             else:
                 precio_final = "Ver en Web"
                 
         except Exception as e:
-            print(f"Error extrayendo precio: {e}")
-            precio_final = "Ver en Web"
+            print(f"Error extrayendo precio con selector primario: {e}")
+            # Fallback a método anterior si falla
+            try:
+                cuerpo_texto = driver.execute_script("return document.body.innerText")
+                zona_producto = cuerpo_texto[:5000]
+                encontrados = re.findall(r'\$\s?(\d+(?:\.\d{2})?)', zona_producto)
+                
+                if encontrados:
+                    precios_num = sorted(list(set([float(p) for p in encontrados])), reverse=True)
+                    precios_logicos = [p for p in precios_num if 20 <= p <= 500]
+                    
+                    if len(precios_logicos) >= 1:
+                        precio_final = f"${precios_logicos[-1]:.2f}"
+                    else:
+                        precio_final = "Ver en Web"
+                else:
+                    precio_final = "Ver en Web"
+            except:
+                precio_final = "Ver en Web"
 
         # 3. Imagen en Alta Resolución
         foto_url = None
@@ -108,13 +111,24 @@ def obtener_datos_nike(driver, url):
         except:
             pass
 
-        # 4. Detección de Promo Extra
+        # 4. Detección de Promo Extra en Carrito
         promo_extra = False
-        if "extra" in zona_producto.lower() and any(x in zona_producto.lower() for x in ["cart", "checkout", "bag", "off"]):
-            promo_extra = True
+        try:
+            cuerpo_texto = driver.execute_script("return document.body.innerText")
+            zona_producto = cuerpo_texto[:8000]
+            
+            if any(x in zona_producto.lower() for x in ["extra savings in bag", "extra off", "descuento en carrito", "carrito adicional"]):
+                if any(y in zona_producto.lower() for y in ["off", "savings", "discount"]):
+                    promo_extra = True
+        except:
+            pass
 
         # 5. Construcción del Mensaje
-        p_display = f"<s>{precio_original}</s> 🔥 <b>{precio_final}</b>" if precio_original else f"<b>{precio_final}</b>"
+        if precio_original and precio_original != precio_final:
+            p_display = f"<s>{precio_original}</s> 🔥 <b>{precio_final}</b>"
+        else:
+            p_display = f"<b>{precio_final}</b>"
+            
         aviso_promo = "\n\n🎁 <b>¡DESCUENTO EXTRA EN CARRITO!</b>\nEste modelo tiene rebaja adicional al pagar." if promo_extra else ""
 
         mensaje = (
