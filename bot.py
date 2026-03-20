@@ -24,7 +24,10 @@ def enviar_notificacion(mensaje, foto_url=None):
     else:
         payload["text"] = mensaje
 
-    requests.post(url_api, json=payload)
+    try:
+        requests.post(url_api, json=payload)
+    except Exception as e:
+        print(f"Error enviando a Telegram: {e}")
 
 def iniciar_driver():
     chrome_options = Options()
@@ -44,36 +47,30 @@ def obtener_datos_nike(driver, url):
     try:
         driver.get(url)
         
-        # ESPERA ACTIVA: Esperar hasta 20 segundos a que aparezca cualquier texto con "$"
+        # Espera activa para que el símbolo $ aparezca en pantalla
         try:
-            WebDriverWait(driver, 20).until(
+            WebDriverWait(driver, 15).until(
                 EC.presence_of_element_located((By.XPATH, "//*[contains(text(), '$')]"))
             )
         except:
-            pass # Si no aparece en 20s, intentamos extraer lo que haya
+            pass
             
-        time.sleep(5) # Tiempo extra para renderizado final
+        time.sleep(5) 
 
-        # 1. Nombre
+        # 1. Nombre del Producto
         try:
-            nombre = driver.find_element(By.CSS_SELECTOR, "h1#pdp_product_title").text
+            nombre = driver.find_element(By.ID, "pdp_product_title").text
         except:
             nombre = "Zapatilla Nike"
 
-        # 2. PRECIO (Búsqueda por coordenadas visuales para evitar errores)
+        # 2. Extracción de Precios (Lógica de zona superior)
         precio_final = "Consultar"
         precio_original = ""
         
         try:
-            # Capturamos el texto de la parte superior derecha (donde Nike pone el precio)
-            # Esto evita capturar precios de productos recomendados de abajo
             cuerpo_texto = driver.execute_script("return document.body.innerText")
-            # Cortamos el texto para quedarnos solo con los primeros 3000 caracteres (zona del producto)
-            zona_producto = cuerpo_texto[:3000]
+            # Analizamos solo la parte superior para evitar precios de sugerencias
+            zona_producto = cuerpo_texto[:3500]
             
-            # Buscamos todos los precios en esa zona
-            encontrados = re.findall(r'\$\s?(\d+(?:\.\d{2})?)', zona_producto)
-            # Limpiar y convertir a números
-            precios_num = sorted(list(set([float(p) for p in encontrados])), reverse=True)
-            
-            # Filtrar precios lógicos (zapatillas entre $25 y $4
+            # Buscamos patrones de precio
+            encontrados = re.findall(r'\$\s
