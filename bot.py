@@ -2,7 +2,9 @@ import time
 import requests
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
-from bs4 import BeautifulSoup
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
 # ---------------------------
 # Configuración Telegram
@@ -52,7 +54,7 @@ URLS = [
     "https://www.nike.com/t/sb-air-max-95-skate-shoes-p6pzgr/HF7545-002",
     "https://www.nike.com/t/air-vapormax-plus-mens-shoes-nC0dzF/CK0900-001",
     "https://www.nike.com/t/air-max-95-g-golf-shoes-pqM06obj/HV4696-002",
-    # ... agrega el resto de tus URLs aquí
+    # ... agrega el resto
 ]
 
 # ---------------------------
@@ -67,25 +69,36 @@ def obtener_info_producto(url):
         driver = webdriver.Chrome(options=options)
 
         driver.get(url)
-        time.sleep(2)  # espera a que cargue la página
 
-        html = driver.page_source
-        driver.quit()
-
-        soup = BeautifulSoup(html, "html.parser")
-
-        # Foto del producto
-        foto_tag = soup.find("meta", property="og:image")
-        foto_url = foto_tag["content"] if foto_tag else None
+        wait = WebDriverWait(driver, 10)
 
         # Nombre del producto
-        nombre_tag = soup.find("meta", property="og:title")
-        nombre = nombre_tag["content"] if nombre_tag else "Producto Nike"
+        try:
+            nombre_tag = wait.until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "h1[data-test='product-title']"))
+            )
+            nombre = nombre_tag.text
+        except:
+            nombre = "Producto Nike"
 
-        # Precio
-        precio_tag = soup.find("meta", property="product:price:amount")
-        precio = float(precio_tag["content"]) if precio_tag else None
+        # Precio dinámico
+        try:
+            precio_tag = wait.until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, '[data-testid="currentPrice-container"]'))
+            )
+            precio_texto = precio_tag.text.replace("$", "").replace(",", "")
+            precio = float(precio_texto)
+        except:
+            precio = None
 
+        # Foto del producto
+        try:
+            foto_tag = driver.find_element(By.CSS_SELECTOR, 'img[data-testid="hero-image"]')
+            foto_url = foto_tag.get_attribute("src")
+        except:
+            foto_url = None
+
+        driver.quit()
         return nombre, precio, foto_url
     except Exception as e:
         print("Error:", e)
