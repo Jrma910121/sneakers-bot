@@ -10,8 +10,8 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 # ---------- Configuración de Telegram ----------
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
-TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
+TELEGRAM_TOKEN = "8759569270:AAExdcBmlmU-KrOo_80AZN_agXboIxU8k50"
+TELEGRAM_CHAT_ID = "8751177346"
 if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
     raise Exception("❌ Faltan variables de entorno (Secrets): TELEGRAM_TOKEN o TELEGRAM_CHAT_ID")
 
