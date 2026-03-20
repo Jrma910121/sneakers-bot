@@ -63,29 +63,39 @@ def obtener_datos_nike(driver, url):
         except:
             nombre = "Zapatilla Nike"
 
-        # 2. Extracción de Precios (Lógica de zona superior del producto)
+        # 2. Extracción de Precios (Lógica mejorada)
         precio_final = "Consultar"
         precio_original = ""
         
         try:
             # Extraemos el texto visible para buscar precios reales
             cuerpo_texto = driver.execute_script("return document.body.innerText")
-            # Limitamos la búsqueda a la parte superior (evita sugerencias de abajo)
-            zona_producto = cuerpo_texto[:3500]
+            # Limitamos la búsqueda a la parte media-superior del producto
+            zona_producto = cuerpo_texto[:5000]
             
-            # EXPRESIÓN REGULAR CORREGIDA: Busca el símbolo $ seguido de números
+            # EXPRESIÓN REGULAR: Busca el símbolo $ seguido de números
             encontrados = re.findall(r'\$\s?(\d+(?:\.\d{2})?)', zona_producto)
-            precios_num = sorted(list(set([float(p) for p in encontrados])), reverse=True)
             
-            # Filtro de rango lógico (Precios entre $20 y $500 USD)
-            precios_logicos = [p for p in precios_num if 20 <= p <= 500]
+            if encontrados:
+                precios_num = sorted(list(set([float(p) for p in encontrados])), reverse=True)
+                
+                # Filtro de rango lógico (Precios entre $20 y $500 USD)
+                precios_logicos = [p for p in precios_num if 20 <= p <= 500]
 
-            if len(precios_logicos) >= 2:
-                precio_original = f"${precios_logicos[0]:.2f}"
-                precio_final = f"${precios_logicos[-1]:.2f}"
-            elif len(precios_logicos) == 1:
-                precio_final = f"${precios_logicos[0]:.2f}"
-        except:
+                if len(precios_logicos) >= 2:
+                    # CORREGIDO: El primer precio es el MÁS ALTO (precio original/sin descuento)
+                    # El último es el MÁS BAJO (precio con descuento)
+                    precio_original = f"${precios_logicos[0]:.2f}"   # Precio sin descuento
+                    precio_final = f"${precios_logicos[-1]:.2f}"     # Precio con descuento
+                elif len(precios_logicos) == 1:
+                    precio_final = f"${precios_logicos[0]:.2f}"
+                else:
+                    precio_final = "Ver en Web"
+            else:
+                precio_final = "Ver en Web"
+                
+        except Exception as e:
+            print(f"Error extrayendo precio: {e}")
             precio_final = "Ver en Web"
 
         # 3. Imagen en Alta Resolución
