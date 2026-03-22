@@ -209,6 +209,7 @@ def main():
         "https://www.nike.com/t/air-max-excee-mens-shoes-vl97pm/FZ5486-007",
         "https://www.nike.com/t/shox-tl-mens-shoes-QVMnuDoH/AV3595-002",
         "https://www.nike.com/t/p-6000-mens-shoes-XkgpKW/IR2004-100",
+        "https://www.nike.com/t/air-vapormax-plus-mens-shoes-nC0dzF/CW7299-001"
     ]
     
     # Cargar precios anteriores
