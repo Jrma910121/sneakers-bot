@@ -198,7 +198,7 @@ def generar_mensaje_con_comparativa(producto_actual, producto_anterior):
         f"--------------------------------\n"
         f"📌 <i>Nota: Precios antes de taxes (impuestos). El valor final varía según el estado de entrega en USA.</i>\n\n"
         f"📦 <b>Envío a Colombia:</b> Requiere el uso de casillero virtual para el transporte internacional.\n\n"
-        f'🔗 <a href="{url}">Ver en la Tienda</a>'
+        f'🔗 <a href="{url}">Compras AQUÍ!!!</a>'
     )
     
     return mensaje, foto_url
@@ -206,7 +206,9 @@ def generar_mensaje_con_comparativa(producto_actual, producto_anterior):
 def main():
     urls = [
         "https://www.nike.com/t/air-force-1-07-mens-shoes-jBrhbr/CT2302-100",
-        "https://www.nike.com/t/air-max-excee-mens-shoes-vl97pm/FZ5486-007"
+        "https://www.nike.com/t/air-max-excee-mens-shoes-vl97pm/FZ5486-007",
+        "https://www.nike.com/t/shox-tl-mens-shoes-QVMnuDoH/AV3595-002",
+        "https://www.nike.com/t/p-6000-mens-shoes-XkgpKW/IR2004-100",
     ]
     
     # Cargar precios anteriores
